@@ -69,8 +69,11 @@ echo "==> 3/8 拉取依赖仓库（sensevoice.axera / melotts.axera）"
 cd "${REPO_ROOT}/axera"
 if [ -d "${AXERA_DIR}/deps/sensevoice.axera" ] && [ -d "${AXERA_DIR}/deps/melotts.axera" ]; then
   # NFS 上已由开发机预置（含模型），直接链接
+  [ -L deps ] || rm -rf deps
   ln -sfn "${AXERA_DIR}/deps" deps
 else
+  [ -L deps ] || rm -rf deps
+  mkdir -p deps
   git clone --depth 1 https://github.com/ml-inory/sensevoice.axera.git deps/sensevoice.axera || \
   git clone --depth 1 https://gh-proxy.com/https://github.com/ml-inory/sensevoice.axera.git deps/sensevoice.axera
   git clone --depth 1 https://github.com/ml-inory/melotts.axera.git deps/melotts.axera || \
