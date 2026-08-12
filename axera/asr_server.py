@@ -121,6 +121,13 @@ def load_sensevoice(model_dir: str, language: str, hotwords: str):
     from SenseVoiceAx import SenseVoiceAx  # noqa: E402
 
     hot = hotwords.split() if hotwords else None
+    if hot:
+        try:
+            import asr_decoder  # noqa: F401
+            import online_fbank  # noqa: F401
+        except ImportError:
+            print("[asr] 未安装 asr_decoder/online-fbank（源码包需编译），本板禁用热词")
+            hot = None
     model = SenseVoiceAx(
         str(model_path),
         str(cmvn),

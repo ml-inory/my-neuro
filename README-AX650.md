@@ -8,7 +8,7 @@ RAG / BERT）都在 AX650 的 NPU 上执行，前端 Live2D 通过原有 HTTP/WS
 
 | 服务 | 端口 | 原接口（保持不变） | AX650 推理后端 | 模型来源 |
 |------|------|--------------------|----------------|----------|
-| LLM | 8000 | OpenAI `/chat/completions` | axllm + Qwen3-0.6B（NPU，w8a16） | `AXERA-TECH/Qwen3-0.6B` |
+| LLM | 8001 | OpenAI `/chat/completions` | axllm + Qwen3-0.6B（NPU，w8a16） | `AXERA-TECH/Qwen3-0.6B` |
 | ASR | 1000 | `/v1/upload_audio`、WS `/v1/ws/vad` | SenseVoice-Small AXMODEL（NPU）+ Silero-VAD（CPU） | `ml-inory/sensevoice.axera` |
 | TTS | 5000 | POST `/`、`/tts`（`{text, text_language}`→wav） | MeloTTS：encoder ONNX（CPU）+ decoder AXMODEL（NPU） | `ml-inory/melotts.axera` |
 | RAG | 8002 | `/encode`、`/similarity`、`/ask` | bge-m3 AXMODEL（NPU，w8a16） | `AXERA-TECH/bge-m3` |
@@ -84,6 +84,8 @@ ssh root@<BOARD_IP> "cd /mnt/axera/my-neuro && bash axera/deploy/install_board.s
 
 把 [axera/config.axera.json](axera/config.axera.json) 里的 `<BOARD_IP>` 全部替换成
 AX650 板的 IP，然后覆盖 `live-2d/config.json` 即可。前端其它配置（性格、UI 等）保持不变。
+LLM 默认端口 8001：演示板 8000 常被其它服务（如 ModuleLLM-OpenAI-Plugin）占用，
+如你的板 8000 空闲可改回 8000（同时改 `axera/config.axera.json` 与 `start_all.sh` 的端口）。
 
 ## BERT axmodel 复现编译（开发机）
 

@@ -6,7 +6,7 @@
   },
   "llm": {
     "api_key": "",
-    "api_url": "http://<BOARD_IP>:8000",
+    "api_url": "http://<BOARD_IP>:8001",
     "model": "AXERA-TECH/Qwen3-0.6B",
     "temperature_enabled": false,
     "temperature": 1.0,
