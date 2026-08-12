@@ -74,7 +74,7 @@ ssh root@<BOARD_IP> "cd /mnt/axera/my-neuro && bash axera/deploy/install_board.s
 1. 挂载 NFS 到 `/mnt`（`mount -t nfs4 <HOST>:/ /mnt -o nolock`）
 2. `apt` 安装系统依赖（libsndfile / mecab / espeak-ng / cmake 等）
 3. 链接 `axera/deps` → `/mnt/axera/deps`（sensevoice / melotts 及模型）
-4. 创建 Python venv（`/mnt/axera/env`），安装 `axera/requirements.txt`
+4. `pip --target` 安装 Python 依赖到 `/mnt/axera/pylib`（不占板端根分区，无需 apt/venv）
 5. 下载/链接模型到 `/mnt/axera/models`（vad / bert / bge-m3 / Qwen2.5-1.5B）
 6. 安装 axllm 预编译二进制（`axllm-ax650-linux-arm64`）与 BSP 运行库
 7. 生成 Qwen2.5-1.5B 的 axllm `config.json`（w4a16）

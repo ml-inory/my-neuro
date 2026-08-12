@@ -59,11 +59,10 @@ if ! mountpoint -q /mnt; then
 fi
 mkdir -p "${AXERA_DIR}"/{models,logs,bin,bsp}
 
-echo "==> 2/8 安装系统依赖（cmake/gcc 供 axllm 备用；运行只需预编译二进制）"
-apt-get update -qq
-apt-get install -y --no-install-recommends \
-  libsndfile1-dev libmecab-dev espeak-ng \
-  aria2 wget git curl unzip python3-venv python3-dev build-essential cmake
+echo "==> 2/8 校验板端基础环境（无需 apt，全部 Python 依赖装入 /mnt）"
+command -v python3 pip3 git curl wget unzip >/dev/null || {
+  echo "缺少基础命令，请先安装: python3 git curl wget unzip" >&2; exit 1; }
+python3 -c "import soundfile" 2>/dev/null || echo "[warn] soundfile 缺失（稍后 pip 安装）"
 
 echo "==> 3/8 拉取依赖仓库（sensevoice.axera / melotts.axera）"
 cd "${REPO_ROOT}/axera"
@@ -80,15 +79,17 @@ else
   git clone --depth 1 https://gh-proxy.com/https://github.com/ml-inory/melotts.axera.git deps/melotts.axera
 fi
 
-echo "==> 4/8 创建 Python 虚拟环境（${ENV_DIR}）"
-if [ ! -x "${ENV_DIR}/bin/python" ]; then
-  python3 -m venv "${ENV_DIR}"
-fi
-"${ENV_DIR}/bin/pip" install -U pip setuptools wheel
-"${ENV_DIR}/bin/pip" install -r "${REPO_ROOT}/axera/requirements.txt"
-# 依赖仓库的额外 Python 依赖
-"${ENV_DIR}/bin/pip" install -r "${REPO_ROOT}/axera/deps/sensevoice.axera/python/requirements.txt" || true
-"${ENV_DIR}/bin/pip" install -r "${REPO_ROOT}/axera/deps/melotts.axera/python/requirements.txt" || true
+echo "==> 4/8 安装 Python 依赖到 ${AXERA_DIR}/pylib（--target，不占根分区）"
+PY_TARGET="${AXERA_DIR}/pylib/site-packages"
+export PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
+mkdir -p "$PY_TARGET"
+python3 -m pip install --no-input --target "$PY_TARGET" --upgrade pip setuptools wheel 2>/dev/null || true
+python3 -m pip install --no-input --target "$PY_TARGET" -r "${REPO_ROOT}/axera/requirements.txt"
+# 依赖仓库的额外 Python 依赖（MeloTTS 中文路径必需子集；mecab 等日文依赖失败不阻塞）
+python3 -m pip install --no-input --target "$PY_TARGET" \
+  pypinyin jieba cn2an g2p_en g2pkk jamo num2words "librosa==0.9.1" || true
+python3 -m pip install --no-input --target "$PY_TARGET" \
+  -r "${REPO_ROOT}/axera/deps/sensevoice.axera/python/requirements.txt" || true
 # MeloTTS 需要 nltk_data
 [ -d "${HOME}/nltk_data" ] || cp -rf "${REPO_ROOT}/axera/deps/melotts.axera/nltk_data" "${HOME}/" 2>/dev/null || true
 

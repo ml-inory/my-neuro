@@ -4,14 +4,15 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 AXERA_DIR="${AXERA_DIR:-/mnt/axera}"
-ENV_PY="${AXERA_DIR}/env/bin/python"
+PY_TARGET="${AXERA_DIR}/pylib/site-packages"
 LOG_DIR="${AXERA_DIR}/logs"
 REPO_ROOT="$(cd .. && pwd)"
 
-[ -x "$ENV_PY" ] || { echo "未找到 $ENV_PY，请先运行 install_board.sh"; exit 1; }
+[ -d "$PY_TARGET" ] || { echo "未找到 $PY_TARGET，请先运行 install_board.sh"; exit 1; }
 mkdir -p "$LOG_DIR"
 
 export AXERA_REPO="$REPO_ROOT"
+export PYTHONPATH="$PY_TARGET:${PYTHONPATH:-}"
 export AXERA_VAD_MODEL="${AXERA_DIR}/models/vad/silero_vad.onnx"
 export AXERA_BERT_DIR="${AXERA_DIR}/models/bert"
 export AXERA_BERT_AXMODEL="${AXERA_DIR}/models/bert/omni_fn_bert.axmodel"
@@ -30,10 +31,10 @@ start_one() {
   echo $! > "$pidfile"
 }
 
-start_one asr "$ENV_PY" "$REPO_ROOT/axera/asr_server.py"
-start_one tts "$ENV_PY" "$REPO_ROOT/axera/tts_server.py"
-start_one rag "$ENV_PY" "$REPO_ROOT/axera/rag_server.py"
-start_one bert "$ENV_PY" "$REPO_ROOT/axera/bert_server.py"
+start_one asr python3 "$REPO_ROOT/axera/asr_server.py"
+start_one tts python3 "$REPO_ROOT/axera/tts_server.py"
+start_one rag python3 "$REPO_ROOT/axera/rag_server.py"
+start_one bert python3 "$REPO_ROOT/axera/bert_server.py"
 
 # axllm（LLM 服务）
 AXLLM="${AXERA_DIR}/bin/axllm"
