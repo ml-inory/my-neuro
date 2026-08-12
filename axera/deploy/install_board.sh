@@ -134,9 +134,21 @@ ENABLE_OPENAI_COMPAT=${ENABLE_OPENAI_COMPAT:-false}
 OPENAI_COMPAT_API_BASE=${OPENAI_COMPAT_API_BASE:-}
 OPENAI_COMPAT_API_KEY=${OPENAI_COMPAT_API_KEY:-}
 OPENAI_COMPAT_MODEL=${OPENAI_COMPAT_MODEL:-gpt-4o}
-# my-neuro 的 ASR/TTS/RAG/BERT 走 axera 自有适配服务，Her.axera 只做 LLM 网关
-ENABLE_AX_ASR=false
-ENABLE_AX_TTS=false
+# ASR/TTS 由 Her.axera 提供（ax_asr / ax_tts，NPU）
+ENABLE_AX_ASR=true
+AX_ASR_MODEL_TYPE=sensevoice
+AX_ASR_MODEL_PATH=/mnt/axera/deps/sensevoice.axera/python/models/SenseVoice/sensevoice_ax650
+AX_ASR_LANGUAGE=zh
+ENABLE_AX_TTS=true
+AX_TTS_MODEL_PATH=/mnt/axera/models/kokoro
+AX_TTS_ESPEAK_DATA_PATH=/mnt/axera/models/kokoro-data/espeak-ng-data
+AX_TTS_JIEBA_DICT_PATH=/mnt/axera/models/kokoro-data/dict
+AX_TTS_MAX_SEQ_LEN=96
+AX_TTS_TYPE=KOKORO
+AX_TTS_VOICE=zf_xiaoxiao
+AX_TTS_LANGUAGE=zh
+AX_TTS_SAMPLE_RATE=24000
+# 端侧 LLM 默认关闭（云端 LLM）；如需启用设 AXLLM_ENABLE=1
 ENABLE_AX_LLM=false
 ENABLE_SPEAKER_RECOGNITION=false
 ENABLE_WAKE_WORD=false
@@ -146,6 +158,11 @@ ENABLE_NOISE_REDUCTION=false
 EOF
   echo "[deploy] 已生成 Her.axera backend/.env，请填入 DEEPSEEK_API_KEY（或 OPENAI_COMPAT_*）"
 fi
+# ax_asr / ax_tts wheel（离线安装，板端直连 github 常超时）
+python3 -m pip install --no-input --target "$PY_TARGET" \
+  "${AXERA_DIR}/wheels/ax650_ax_asr-0.1.0-cp310-cp310-linux_aarch64.whl" \
+  "${AXERA_DIR}/wheels/ax_tts-0.1.5-cp310-cp310-linux_aarch64.whl" \
+  2>/dev/null || echo "[warn] ax_asr/ax_tts wheel 安装失败，请检查 ${AXERA_DIR}/wheels"
 
 echo "==> 7/8 端侧 LLM（可选）"
 if [ "${AXLLM_ENABLE:-0}" = "1" ]; then

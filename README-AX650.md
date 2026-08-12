@@ -1,18 +1,17 @@
 # my-neuro AX650 后端移植（axera 分支）
 
-本分支把 my-neuro 的本地 AI 后端搬到 AX650 上运行：ASR / TTS / RAG / BERT 的模型推理
-在 AX650 NPU 上执行；LLM 采用“云端模型 + 板端网关”设计（复用
-[ml-inory/Her.axera](https://github.com/ml-inory/Her.axera) 的 OpenAI 兼容网关，可接
-DeepSeek 或任意 OpenAI 兼容云端），端侧 axllm 作为可选方案。前端 Live2D 通过原有
-HTTP/WS 接口无缝切换，无需修改前端代码。
+本分支把 my-neuro 的本地 AI 后端搬到 AX650 上运行。ASR / TTS / LLM 统一由
+[ml-inory/Her.axera](https://github.com/ml-inory/Her.axera) 提供（ax_asr / ax_tts 走
+AX650 NPU；LLM 走云端 deepseek / openai_compat，端侧 axllm 可选），RAG / BERT 由本分支
+的适配服务提供（NPU）。前端 Live2D 通过原有 HTTP/WS 接口无缝切换，无需修改前端代码。
 
 ## 后端服务与模型清单
 
 | 服务 | 端口 | 原接口（保持不变） | AX650 推理后端 | 模型来源 |
 |------|------|--------------------|----------------|----------|
 | LLM | 8080 | OpenAI `/v1/chat/completions`（Her.axera 网关） | 云端：deepseek / openai_compat（可选端侧 axllm+Qwen3） | `ml-inory/Her.axera` |
-| ASR | 1000 | `/v1/upload_audio`、WS `/v1/ws/vad` | SenseVoice-Small AXMODEL（NPU）+ Silero-VAD（CPU） | `ml-inory/sensevoice.axera` |
-| TTS | 5000 | POST `/`、`/tts`（`{text, text_language}`→wav） | MeloTTS：encoder ONNX（CPU）+ decoder AXMODEL（NPU） | `ml-inory/melotts.axera` |
+| ASR | 1000 | `/v1/upload_audio`、WS `/v1/ws/vad` | Her.axera `ax_asr`（SenseVoice NPU）+ 本地 Silero-VAD | `ml-inory/Her.axera` |
+| TTS | 5000 | POST `/`、`/tts`（`{text, text_language}`→wav） | Her.axera `ax_tts`（Kokoro NPU，可回退 edge_tts） | `ml-inory/Her.axera` |
 | RAG | 8002 | `/encode`、`/similarity`、`/ask` | bge-m3 AXMODEL（NPU，w8a16） | `AXERA-TECH/bge-m3` |
 | BERT | 6007 | `/classify`（Vision / core memory） | Omni_fn_bert（Ernie-3.0-base）AXMODEL（NPU，INT8） | `morelle/Omni_fn_bert`（自编译） |
 
@@ -79,7 +78,9 @@ ssh root@<BOARD_IP> "cd /mnt/axera/my-neuro && bash axera/deploy/install_board.s
 4. `pip --target` 安装 Python 依赖到 `/mnt/axera/pylib`（不占板端根分区，无需 apt/venv）
 5. 下载/链接模型到 `/mnt/axera/models`（vad / bert / bge-m3）
 6. 部署 Her.axera 后端到 `/mnt/axera/deps/Her.axera`，生成 `backend/.env`
-   （`DEFAULT_LLM_PROVIDER=deepseek` 或 `openai_compat`，需填入云端 API Key）
+   （ASR/TTS 用 ax_asr/ax_tts NPU；LLM 填 `DEEPSEEK_API_KEY` 或 `OPENAI_COMPAT_*`）
+   - 安装 `ax_asr` / `ax_tts` aarch64 wheel（已预置 wheels 目录）
+   - Kokoro 模型 + 中文音色 `zf_xiaoxiao` + espeak/jieba 词典预置到 `/mnt/axera/models`
 7. （可选）`AXLLM_ENABLE=1` 安装 axllm + Qwen3-0.6B 作为端侧 LLM
 8. `start_all.sh` 启动全部服务并输出访问地址
 
@@ -93,6 +94,10 @@ DeepSeek 填 `DEEPSEEK_API_KEY`；其它 OpenAI 兼容服务把 `DEFAULT_LLM_PRO
 并填 `OPENAI_COMPAT_API_BASE/API_KEY/MODEL`。
 端侧 LLM（axllm+Qwen3-0.6B，约 1.1GB 权重）默认不部署，需要时 `AXLLM_ENABLE=1` 安装，
 端口 8001（演示板 8000 常被其它服务占用）。
+
+ASR/TTS 也走 Her.axera：`axera/asr_server.py` / `axera/tts_server.py` 只是前端契约的薄
+适配层（`/v1/upload_audio`、`/v1/ws/vad`、POST `/` 转发到 Her.axera 的
+`/v1/audio/transcriptions`、`/v1/audio/speech`）。RAG/BERT 保持本分支实现。
 
 ## BERT axmodel 复现编译（开发机）
 

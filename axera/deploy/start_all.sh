@@ -20,6 +20,7 @@ export AXERA_BERT_ONNX="${AXERA_DIR}/models/bert/model.onnx"
 export AXERA_BGE_AXMODEL="${AXERA_DIR}/models/bge-m3/model/bge-m3_u16_npu3.axmodel"
 export AXERA_BGE_TOKENIZER="${AXERA_DIR}/models/bge-m3-tokenizer"
 export AXERA_KB_FILE="${REPO_ROOT}/AI记录室/记忆库.txt"
+export AXERA_HER_BACKEND="${AXERA_HER_BACKEND:-http://127.0.0.1:8080/v1}"
 
 start_one() {
   local name="$1"; shift

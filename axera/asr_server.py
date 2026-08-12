@@ -8,15 +8,11 @@
   - POST /hotwords/reload   重新加载热词文件
   - GET  /vad/status        VAD 连接状态
 
-模型推理全部落在 AX650 上：
-  - ASR：SenseVoice-Small AXMODEL（NPU，axengine），支持中/英/粤/日/韩 + 自动标点
-  - VAD：Silero-VAD ONNX（CPU，onnxruntime）
-
-依赖代码来自 ml-inory/sensevoice.axera（MIT），部署脚本会自动 clone 到
-axera/deps/sensevoice.axera。
+推理后端（Her.axera 统一提供，见 axera/deps/Her.axera）：
+  - ASR：转发 Her.axera POST /v1/audio/transcriptions（ax_asr，SenseVoice NPU）
+  - VAD：本服务内置 Silero-VAD ONNX（CPU，onnxruntime），保持流式契约
 """
 import argparse
-import io
 import json
 import os
 import re
@@ -25,7 +21,6 @@ from pathlib import Path
 from queue import Queue
 
 import numpy as np
-import soundfile as sf
 import uvicorn
 from fastapi import FastAPI, File, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,6 +29,10 @@ try:
     import onnxruntime as ort
 except ImportError:
     ort = None
+try:
+    import requests
+except ImportError:
+    requests = None
 
 SAMPLE_RATE = 16000
 WINDOW_SIZE = 512
@@ -50,7 +49,7 @@ app.add_middleware(
 
 # 运行时状态
 vad_state = {"is_running": False, "active_websockets": set(), "vad": None}
-asr_state = {"model": None, "language": "zh"}
+asr_state = {"backend_url": "", "language": "zh"}
 hotword_state = {"hotwords": "", "file": ""}
 
 
@@ -108,52 +107,15 @@ def clean_sensevoice_text(text: str) -> str:
     return text.strip()
 
 
-def load_sensevoice(model_dir: str, language: str, hotwords: str):
-    """加载 SenseVoice AXMODEL（NPU）。"""
-    model_root = Path(model_dir)
-    model_path = model_root / "sensevoice.axmodel"
-    assert model_path.exists(), f"找不到 {model_path}，请先运行 axera/models/download_models.sh"
-    cmvn = model_root / "am.mvn"
-    bpe = model_root / "chn_jpn_yue_eng_ko_spectok.bpe.model"
-    tokens = model_root / "tokens.txt"
-
-    sys.path.insert(0, str(Path(__file__).resolve().parent / "deps" / "sensevoice.axera" / "python"))
-    from SenseVoiceAx import SenseVoiceAx  # noqa: E402
-
-    hot = hotwords.split() if hotwords else None
-    if hot:
-        try:
-            import asr_decoder  # noqa: F401
-            import online_fbank  # noqa: F401
-        except ImportError:
-            print("[asr] 未安装 asr_decoder/online-fbank（源码包需编译），本板禁用热词")
-            hot = None
-    model = SenseVoiceAx(
-        str(model_path),
-        str(cmvn),
-        str(tokens),
-        str(bpe),
-        max_seq_len=256,
-        beam_size=3,
-        hot_words=hot,
-        streaming=False,
-    )
-    print(f"[asr] SenseVoice 加载完成 (chip=ax650, language={language})")
-    return model
-
-
 @app.on_event("startup")
 async def startup():
     # 通过环境变量注入部署路径
     repo = Path(os.environ.get("AXERA_REPO", Path(__file__).resolve().parent.parent))
-    model_dir = os.environ.get(
-        "AXERA_SENSEVOICE_DIR",
-        str(repo / "axera" / "deps" / "sensevoice.axera" / "python" / "models" / "SenseVoice" / "sensevoice_ax650"),
-    )
     vad_model = os.environ.get(
         "AXERA_VAD_MODEL",
         str(repo / "axera" / "models" / "vad" / "silero_vad.onnx"),
     )
+    backend_url = os.environ.get("AXERA_HER_BACKEND", "http://127.0.0.1:8080/v1")
     hotwords_file = os.environ.get(
         "AXERA_HOTWORDS_FILE",
         str(repo / "full-hub" / "hotwords.txt"),
@@ -164,7 +126,8 @@ async def startup():
     hotword_state["hotwords"] = load_hotwords(hotwords_file)
     vad_state["vad"] = SileroVAD(vad_model)
     asr_state["language"] = language
-    asr_state["model"] = load_sensevoice(model_dir, language, hotword_state["hotwords"])
+    asr_state["backend_url"] = backend_url
+    print(f"[asr] VAD 就绪；ASR 转发 Her.axera {backend_url}/audio/transcriptions")
 
 
 @app.websocket("/v1/ws/vad")
@@ -197,24 +160,17 @@ async def websocket_endpoint(websocket: WebSocket):
 async def upload_audio(file: UploadFile = File(...)):
     try:
         audio_bytes = await file.read()
-        try:
-            audio_data, sample_rate = sf.read(io.BytesIO(audio_bytes))
-            audio_data = audio_data.astype(np.float32)
-            if audio_data.ndim > 1:
-                audio_data = audio_data.mean(axis=1)
-        except Exception:
-            import librosa
-
-            audio_data, sample_rate = librosa.load(io.BytesIO(audio_bytes), sr=16000)
-            audio_data = audio_data.astype(np.float32)
-
-        if sample_rate != SAMPLE_RATE:
-            import librosa
-
-            audio_data = librosa.resample(audio_data, orig_sr=sample_rate, target_sr=SAMPLE_RATE)
-
-        text = asr_state["model"].infer((audio_data, SAMPLE_RATE), language=asr_state["language"])
-        text = clean_sensevoice_text(text)
+        if requests is None:
+            return {"status": "error", "message": "requests 未安装"}
+        # 转发 Her.axera /v1/audio/transcriptions（ax_asr，SenseVoice NPU）
+        resp = requests.post(
+            f"{asr_state['backend_url']}/audio/transcriptions",
+            files={"file": (file.filename or "audio.wav", audio_bytes)},
+            data={"model": "ax_asr_sensevoice", "language": asr_state["language"]},
+            timeout=120,
+        )
+        resp.raise_for_status()
+        text = (resp.json() or {}).get("text", "").strip()
         if not text:
             return {"status": "error", "filename": file.filename or "uploaded_audio", "message": "语音识别失败"}
         return {"status": "success", "filename": file.filename or "uploaded_audio", "text": text}
