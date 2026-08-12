@@ -4,3 +4,6 @@
 [submodule "axera/deps/melotts.axera"]
 	path = axera/deps/melotts.axera
 	url = https://github.com/ml-inory/melotts.axera.git
+[submodule "axera/deps/Her.axera"]
+	path = axera/deps/Her.axera
+	url = https://github.com/ml-inory/Her.axera.git

@@ -38,13 +38,20 @@ start_one tts python3 "$REPO_ROOT/axera/tts_server.py"
 start_one rag python3 "$REPO_ROOT/axera/rag_server.py"
 start_one bert python3 "$REPO_ROOT/axera/bert_server.py"
 
-# axllm（LLM 服务）
-AXLLM="${AXERA_DIR}/bin/axllm"
-if [ -x "$AXLLM" ]; then
-  export LD_LIBRARY_PATH="${AXERA_DIR}/bsp/msp_3.6.2/out/lib:/soc/lib:${LD_LIBRARY_PATH:-}"
-  start_one axllm "$AXLLM" serve "${AXERA_DIR}/models/Qwen3-0.6B" --port 8000
+# Her.axera 云端 LLM 网关（OpenAI 兼容 /v1/chat/completions，deepseek / openai_compat）
+HER_DIR="${AXERA_DIR}/deps/Her.axera"
+if [ -d "${HER_DIR}/backend" ]; then
+  start_one her-axera python3 -m uvicorn app.main:app \
+    --app-dir "${HER_DIR}/backend" --host 0.0.0.0 --port "${HER_AXERA_PORT:-8080}"
 else
-  echo "[warn] axllm 未安装，跳过 LLM 服务"
+  echo "[warn] Her.axera 未部署，跳过云端 LLM 网关（请运行 install_board.sh）"
+fi
+
+# axllm（端侧 LLM，可选：AXLLM_ENABLE=1 部署后自动启用）
+AXLLM="${AXERA_DIR}/bin/axllm"
+if [ "${AXLLM_ENABLE:-0}" = "1" ] && [ -x "$AXLLM" ]; then
+  export LD_LIBRARY_PATH="${AXERA_DIR}/bsp/msp_3.6.2/out/lib:/soc/lib:${LD_LIBRARY_PATH:-}"
+  start_one axllm "$AXLLM" serve "${AXERA_DIR}/models/Qwen3-0.6B" --port "${AXLLM_PORT:-8001}"
 fi
 
 echo "服务 PID: $(cat "${AXERA_DIR}"/logs/*.pid 2>/dev/null | tr '\n' ' ')"

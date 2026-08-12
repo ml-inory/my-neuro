@@ -117,33 +117,65 @@ else
   echo "[deploy] 模型已由开发机预置（vad/bert/bge-m3/qwen），跳过下载"
 fi
 
-echo "==> 6/8 安装 axllm 预编译二进制"
-if [ ! -x "${AXERA_DIR}/bin/axllm" ]; then
-  curl -fL --retry 3 -o "${AXERA_DIR}/bin/axllm" \
-    https://github.com/AXERA-TECH/ax-llm/releases/latest/download/axllm-ax650-linux-arm64
-  chmod +x "${AXERA_DIR}/bin/axllm"
+echo "==> 6/8 部署 Her.axera 云端 LLM 网关（OpenAI 兼容 /v1/chat/completions）"
+HER_DIR="${AXERA_DIR}/deps/Her.axera"
+if [ ! -d "${HER_DIR}" ]; then
+  git clone --depth 1 https://github.com/ml-inory/Her.axera.git "${HER_DIR}" || \
+  git clone --depth 1 https://gh-proxy.com/https://github.com/ml-inory/Her.axera.git "${HER_DIR}"
 fi
-# BSP 运行库（axllm 动态依赖）
-if [ ! -f "${AXERA_DIR}/bsp/msp_3.6.2/out/lib/libax_sys.so" ]; then
-  cd "${AXERA_DIR}/bsp"
-  curl -fL --retry 3 -o msp_3.6.2.zip \
-    https://github.com/ZHEQIUSHUI/assets/releases/download/ax_3.6.2/msp_3.6.2.zip
-  unzip -qo msp_3.6.2.zip
+if [ ! -f "${HER_DIR}/backend/.env" ]; then
+  cat > "${HER_DIR}/backend/.env" <<EOF
+API_PREFIX=/v1
+DEFAULT_LLM_PROVIDER=deepseek
+DEEPSEEK_API_BASE=https://api.deepseek.com
+DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY:-}
+DEEPSEEK_MODEL=deepseek-chat
+ENABLE_OPENAI_COMPAT=${ENABLE_OPENAI_COMPAT:-false}
+OPENAI_COMPAT_API_BASE=${OPENAI_COMPAT_API_BASE:-}
+OPENAI_COMPAT_API_KEY=${OPENAI_COMPAT_API_KEY:-}
+OPENAI_COMPAT_MODEL=${OPENAI_COMPAT_MODEL:-gpt-4o}
+# my-neuro 的 ASR/TTS/RAG/BERT 走 axera 自有适配服务，Her.axera 只做 LLM 网关
+ENABLE_AX_ASR=false
+ENABLE_AX_TTS=false
+ENABLE_AX_LLM=false
+ENABLE_SPEAKER_RECOGNITION=false
+ENABLE_WAKE_WORD=false
+ENABLE_EMOTION_DETECTION=false
+ENABLE_VISION=false
+ENABLE_NOISE_REDUCTION=false
+EOF
+  echo "[deploy] 已生成 Her.axera backend/.env，请填入 DEEPSEEK_API_KEY（或 OPENAI_COMPAT_*）"
 fi
 
-echo "==> 7/8 准备 Qwen3-0.6B 模型目录（若未下载）"
-QWEN_DIR="${MODELS_DIR}/Qwen3-0.6B"
-if [ ! -f "${QWEN_DIR}/qwen3_p128_l0_together.axmodel" ]; then
-  (cd "${REPO_ROOT}/axera/models" && bash download_models.sh)
+echo "==> 7/8 端侧 LLM（可选）"
+if [ "${AXLLM_ENABLE:-0}" = "1" ]; then
+  if [ ! -x "${AXERA_DIR}/bin/axllm" ]; then
+    curl -fL --retry 3 -o "${AXERA_DIR}/bin/axllm" \
+      https://github.com/AXERA-TECH/ax-llm/releases/latest/download/axllm-ax650-linux-arm64
+    chmod +x "${AXERA_DIR}/bin/axllm"
+  fi
+  if [ ! -f "${AXERA_DIR}/bsp/msp_3.6.2/out/lib/libax_sys.so" ]; then
+    cd "${AXERA_DIR}/bsp"
+    curl -fL --retry 3 -o msp_3.6.2.zip \
+      https://github.com/ZHEQIUSHUI/assets/releases/download/ax_3.6.2/msp_3.6.2.zip
+    unzip -qo msp_3.6.2.zip
+  fi
+  QWEN_DIR="${MODELS_DIR}/Qwen3-0.6B"
+  if [ ! -f "${QWEN_DIR}/qwen3_p128_l0_together.axmodel" ]; then
+    (cd "${REPO_ROOT}/axera/models" && bash download_models.sh)
+  fi
+  [ -s "${QWEN_DIR}/config.json" ] || { echo "[deploy] Qwen3-0.6B config.json 缺失"; exit 1; }
+else
+  echo "[deploy] 默认云端 LLM（Her.axera 网关）；如需端侧 axllm 请设置 AXLLM_ENABLE=1"
 fi
-[ -s "${QWEN_DIR}/config.json" ] || { echo "[deploy] Qwen3-0.6B config.json 缺失"; exit 1; }
 
 echo "==> 8/8 启动全部服务"
 bash "${REPO_ROOT}/axera/deploy/start_all.sh"
 sleep 8
 echo
 echo "======== 部署完成 ========"
-echo "LLM  : http://<BOARD_IP>:8000/v1/models （axllm，Qwen3-0.6B）"
+echo "LLM  : http://<BOARD_IP>:8080/v1/chat/completions （Her.axera 网关，deepseek/openai_compat 云端）"
+echo "        （可选端侧 axllm：AXLLM_ENABLE=1 部署，端口 8001）"
 echo "ASR  : http://<BOARD_IP>:1000/v1/upload_audio + ws://<BOARD_IP>:1000/v1/ws/vad"
 echo "TTS  : http://<BOARD_IP>:5000/ (POST {text,text_language})"
 echo "RAG  : http://<BOARD_IP>:8002/ask"

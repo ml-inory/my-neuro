@@ -1,14 +1,16 @@
 # my-neuro AX650 后端移植（axera 分支）
 
-本分支把 my-neuro 的本地 AI 后端整体搬到 AX650 上运行：所有模型推理（LLM / ASR / TTS /
-RAG / BERT）都在 AX650 的 NPU 上执行，前端 Live2D 通过原有 HTTP/WS 接口无缝切换，
-无需修改前端代码。
+本分支把 my-neuro 的本地 AI 后端搬到 AX650 上运行：ASR / TTS / RAG / BERT 的模型推理
+在 AX650 NPU 上执行；LLM 采用“云端模型 + 板端网关”设计（复用
+[ml-inory/Her.axera](https://github.com/ml-inory/Her.axera) 的 OpenAI 兼容网关，可接
+DeepSeek 或任意 OpenAI 兼容云端），端侧 axllm 作为可选方案。前端 Live2D 通过原有
+HTTP/WS 接口无缝切换，无需修改前端代码。
 
 ## 后端服务与模型清单
 
 | 服务 | 端口 | 原接口（保持不变） | AX650 推理后端 | 模型来源 |
 |------|------|--------------------|----------------|----------|
-| LLM | 8001 | OpenAI `/chat/completions` | axllm + Qwen3-0.6B（NPU，w8a16） | `AXERA-TECH/Qwen3-0.6B` |
+| LLM | 8080 | OpenAI `/v1/chat/completions`（Her.axera 网关） | 云端：deepseek / openai_compat（可选端侧 axllm+Qwen3） | `ml-inory/Her.axera` |
 | ASR | 1000 | `/v1/upload_audio`、WS `/v1/ws/vad` | SenseVoice-Small AXMODEL（NPU）+ Silero-VAD（CPU） | `ml-inory/sensevoice.axera` |
 | TTS | 5000 | POST `/`、`/tts`（`{text, text_language}`→wav） | MeloTTS：encoder ONNX（CPU）+ decoder AXMODEL（NPU） | `ml-inory/melotts.axera` |
 | RAG | 8002 | `/encode`、`/similarity`、`/ask` | bge-m3 AXMODEL（NPU，w8a16） | `AXERA-TECH/bge-m3` |
@@ -75,17 +77,22 @@ ssh root@<BOARD_IP> "cd /mnt/axera/my-neuro && bash axera/deploy/install_board.s
 2. `apt` 安装系统依赖（libsndfile / mecab / espeak-ng / cmake 等）
 3. 链接 `axera/deps` → `/mnt/axera/deps`（sensevoice / melotts 及模型）
 4. `pip --target` 安装 Python 依赖到 `/mnt/axera/pylib`（不占板端根分区，无需 apt/venv）
-5. 下载/链接模型到 `/mnt/axera/models`（vad / bert / bge-m3 / Qwen2.5-1.5B）
-6. 安装 axllm 预编译二进制（`axllm-ax650-linux-arm64`）与 BSP 运行库
-7. 校验 Qwen3-0.6B 的 axllm `config.json`（官方已提供）
+5. 下载/链接模型到 `/mnt/axera/models`（vad / bert / bge-m3）
+6. 部署 Her.axera 后端到 `/mnt/axera/deps/Her.axera`，生成 `backend/.env`
+   （`DEFAULT_LLM_PROVIDER=deepseek` 或 `openai_compat`，需填入云端 API Key）
+7. （可选）`AXLLM_ENABLE=1` 安装 axllm + Qwen3-0.6B 作为端侧 LLM
 8. `start_all.sh` 启动全部服务并输出访问地址
 
 ## 前端切换
 
 把 [axera/config.axera.json](axera/config.axera.json) 里的 `<BOARD_IP>` 全部替换成
 AX650 板的 IP，然后覆盖 `live-2d/config.json` 即可。前端其它配置（性格、UI 等）保持不变。
-LLM 默认端口 8001：演示板 8000 常被其它服务（如 ModuleLLM-OpenAI-Plugin）占用，
-如你的板 8000 空闲可改回 8000（同时改 `axera/config.axera.json` 与 `start_all.sh` 的端口）。
+LLM 默认走 Her.axera 云端网关（`http://<BOARD_IP>:8080/v1`，OpenAI 兼容）。
+云端凭据在 `/mnt/axera/deps/Her.axera/backend/.env` 配置：
+DeepSeek 填 `DEEPSEEK_API_KEY`；其它 OpenAI 兼容服务把 `DEFAULT_LLM_PROVIDER=openai_compat`
+并填 `OPENAI_COMPAT_API_BASE/API_KEY/MODEL`。
+端侧 LLM（axllm+Qwen3-0.6B，约 1.1GB 权重）默认不部署，需要时 `AXLLM_ENABLE=1` 安装，
+端口 8001（演示板 8000 常被其它服务占用）。
 
 ## BERT axmodel 复现编译（开发机）
 
@@ -106,8 +113,8 @@ bash axera/models/compile_axmodel.sh <导出目录> <编译输出目录>
 
 ## 已知限制
 
-- LLM 默认 Qwen3-0.6B（28 层 w8a16，约 1GB，4GB 内存板流畅）；
-  如需更强模型可换 `AXERA-TECH/Qwen2.5-1.5B-Instruct`（w4a16，约 1.8GB）
+- LLM 默认云端（Her.axera 网关），端侧 axllm 为可选；Qwen3-0.6B 需约 1.1GB 权重
+  常驻内存，4GB 板同时跑其它服务会比较紧
 - TTS 为 MeloTTS 音色（与原 GPT-SoVITS 肥牛音色不同）；如需原音色，TTS 仍需在 PC 端跑 GPT-SoVITS
 - ASR 热词通过 `hotwords.txt` 透传给 SenseVoice（原 funasr 的权重热词语法不适用）
 - MemOS（`plugins-dlc/memos`）为纯 Python 记忆系统，未随本分支上板；其 embedding 可复用 RAG 服务
