@@ -84,7 +84,14 @@ PY_TARGET="${AXERA_DIR}/pylib/site-packages"
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
 mkdir -p "$PY_TARGET"
 python3 -m pip install --no-input --target "$PY_TARGET" --upgrade pip setuptools wheel 2>/dev/null || true
-python3 -m pip install --no-input --target "$PY_TARGET" -r "${REPO_ROOT}/axera/requirements.txt"
+# axengine 用 NFS 上的本地 wheel（板端直连 github 常超时），其余依赖走 aliyun 镜像
+grep -v '^axengine' "${REPO_ROOT}/axera/requirements.txt" > "${AXERA_DIR}/req_axera.txt"
+python3 -m pip install --no-input --target "$PY_TARGET" -r "${AXERA_DIR}/req_axera.txt"
+if [ -f "${AXERA_DIR}/axengine-0.1.3-py3-none-any.whl" ]; then
+  python3 -m pip install --no-input --target "$PY_TARGET" "${AXERA_DIR}/axengine-0.1.3-py3-none-any.whl"
+elif [ -f "${AXERA_DIR}/axengine.whl" ]; then
+  python3 -m pip install --no-input --target "$PY_TARGET" "${AXERA_DIR}/axengine.whl"
+fi
 # 依赖仓库的额外 Python 依赖（MeloTTS 中文路径必需子集；mecab 等日文依赖失败不阻塞）
 python3 -m pip install --no-input --target "$PY_TARGET" \
   pypinyin jieba cn2an g2p_en g2pkk jamo num2words "librosa==0.9.1" || true
