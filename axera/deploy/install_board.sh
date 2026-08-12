@@ -82,11 +82,21 @@ fi
 echo "==> 4/8 安装 Python 依赖到 ${AXERA_DIR}/pylib（--target，不占根分区）"
 PY_TARGET="${AXERA_DIR}/pylib/site-packages"
 export PIP_INDEX_URL="${PIP_INDEX_URL:-https://mirrors.aliyun.com/pypi/simple/}"
+export TMPDIR="${AXERA_DIR}/tmp" PIP_CACHE_DIR="${AXERA_DIR}/.cache/pip"
+mkdir -p "$TMPDIR" "$PIP_CACHE_DIR"
 mkdir -p "$PY_TARGET"
 python3 -m pip install --no-input --target "$PY_TARGET" --upgrade pip setuptools wheel 2>/dev/null || true
 # axengine 用 NFS 上的本地 wheel（板端直连 github 常超时），其余依赖走 aliyun 镜像
 grep -v '^axengine' "${REPO_ROOT}/axera/requirements.txt" > "${AXERA_DIR}/req_axera.txt"
-python3 -m pip install --no-input --target "$PY_TARGET" -r "${AXERA_DIR}/req_axera.txt"
+if [ -d "${AXERA_DIR}/wheels" ] && ls "${AXERA_DIR}/wheels"/*.whl >/dev/null 2>&1; then
+  # 开发机已预置 aarch64 wheels（pip download --platform manylinux2014_aarch64），离线安装
+  REQ="${AXERA_DIR}/wheels/requirements-axera.txt"
+  [ -f "$REQ" ] || REQ="${AXERA_DIR}/req_axera.txt"
+  python3 -m pip install --no-input --no-index --find-links "${AXERA_DIR}/wheels" --target "$PY_TARGET" -r "$REQ" \
+    || echo "[warn] 离线安装有缺失，尝试在线补充（需板端能访问镜像）"
+else
+  python3 -m pip install --no-input --target "$PY_TARGET" -r "${AXERA_DIR}/req_axera.txt"
+fi
 if [ -f "${AXERA_DIR}/axengine-0.1.3-py3-none-any.whl" ]; then
   python3 -m pip install --no-input --target "$PY_TARGET" "${AXERA_DIR}/axengine-0.1.3-py3-none-any.whl"
 elif [ -f "${AXERA_DIR}/axengine.whl" ]; then
