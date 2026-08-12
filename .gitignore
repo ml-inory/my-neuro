@@ -66,3 +66,13 @@ live-2d/plugins/**/.runtime/
 live-2d/plugins/.stats_client_id
 live-2d/plugins/community/agent-dream/dream_logs/
 live-2d/plugins/community/agent-dream/dream_state.json
+
+# AX650 后端（axera 分支）：大模型产物不入库（deps 为 git submodule，gitlink 入库）
+axera/models/vad/
+axera/models/bert/model.onnx
+axera/models/bert/omni_fn_bert.axmodel
+axera/models/bert/calib/
+axera/models/bge-m3/
+axera/models/Qwen2.5-1.5B-Instruct/
+axera/models/bert/compile/
+axera/**/*.log

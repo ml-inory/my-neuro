@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# 启动 my-neuro axera 全部后端服务（nohup + pid 文件，不依赖 systemd）
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+AXERA_DIR="${AXERA_DIR:-/mnt/axera}"
+ENV_PY="${AXERA_DIR}/env/bin/python"
+LOG_DIR="${AXERA_DIR}/logs"
+REPO_ROOT="$(cd .. && pwd)"
+
+[ -x "$ENV_PY" ] || { echo "未找到 $ENV_PY，请先运行 install_board.sh"; exit 1; }
+mkdir -p "$LOG_DIR"
+
+export AXERA_REPO="$REPO_ROOT"
+export AXERA_VAD_MODEL="${AXERA_DIR}/models/vad/silero_vad.onnx"
+export AXERA_BERT_DIR="${AXERA_DIR}/models/bert"
+export AXERA_BERT_AXMODEL="${AXERA_DIR}/models/bert/omni_fn_bert.axmodel"
+export AXERA_BERT_ONNX="${AXERA_DIR}/models/bert/model.onnx"
+export AXERA_BGE_AXMODEL="${AXERA_DIR}/models/bge-m3/model/bge-m3_u16_npu3.axmodel"
+
+start_one() {
+  local name="$1"; shift
+  local pidfile="${AXERA_DIR}/logs/${name}.pid"
+  if [ -f "$pidfile" ] && kill -0 "$(cat "$pidfile")" 2>/dev/null; then
+    echo "[skip] $name 已在运行"
+    return
+  fi
+  echo "[start] $name"
+  nohup "$@" >>"${LOG_DIR}/${name}.log" 2>&1 &
+  echo $! > "$pidfile"
+}
+
+start_one asr "$ENV_PY" "$REPO_ROOT/axera/asr_server.py"
+start_one tts "$ENV_PY" "$REPO_ROOT/axera/tts_server.py"
+start_one rag "$ENV_PY" "$REPO_ROOT/axera/rag_server.py"
+start_one bert "$ENV_PY" "$REPO_ROOT/axera/bert_server.py"
+
+# axllm（LLM 服务）
+AXLLM="${AXERA_DIR}/bin/axllm"
+if [ -x "$AXLLM" ]; then
+  export LD_LIBRARY_PATH="${AXERA_DIR}/bsp/msp_3.6.2/out/lib:/soc/lib:${LD_LIBRARY_PATH:-}"
+  start_one axllm "$AXLLM" serve "${AXERA_DIR}/models/Qwen2.5-1.5B-Instruct" --port 8000
+else
+  echo "[warn] axllm 未安装，跳过 LLM 服务"
+fi
+
+echo "服务 PID: $(cat "${AXERA_DIR}"/logs/*.pid 2>/dev/null | tr '\n' ' ')"

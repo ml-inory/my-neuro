@@ -1,0 +1,6 @@
+[submodule "axera/deps/sensevoice.axera"]
+	path = axera/deps/sensevoice.axera
+	url = https://github.com/ml-inory/sensevoice.axera.git
+[submodule "axera/deps/melotts.axera"]
+	path = axera/deps/melotts.axera
+	url = https://github.com/ml-inory/melotts.axera.git
