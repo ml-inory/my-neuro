@@ -114,36 +114,19 @@ if [ ! -f "${AXERA_DIR}/bsp/msp_3.6.2/out/lib/libax_sys.so" ]; then
   unzip -qo msp_3.6.2.zip
 fi
 
-echo "==> 7/8 准备 Qwen2.5-1.5B 模型目录（若未下载）"
-QWEN_DIR="${MODELS_DIR}/Qwen2.5-1.5B-Instruct"
-QWEN_CFG="${QWEN_DIR}/config.json"
-if [ ! -f "${QWEN_DIR}/qwen2.5-1.5b-ctx-int4-ax650/qwen2_p128_l0_together.axmodel" ]; then
+echo "==> 7/8 准备 Qwen3-0.6B 模型目录（若未下载）"
+QWEN_DIR="${MODELS_DIR}/Qwen3-0.6B"
+if [ ! -f "${QWEN_DIR}/qwen3_p128_l0_together.axmodel" ]; then
   (cd "${REPO_ROOT}/axera/models" && bash download_models.sh)
 fi
-# axllm 需要 config.json（该 HF/ModelScope 仓库的 config.json 为空，这里生成）
-if [ ! -s "${QWEN_CFG}" ]; then
-  cat > "${QWEN_CFG}" <<EOF
-{
-  "model_name": "Qwen2.5-1.5B-Instruct",
-  "tokenizer_type": "Qwen2_5",
-  "url_tokenizer_model": "qwen2.5_tokenizer/tokenizer.json",
-  "template_filename_axmodel": "qwen2.5-1.5b-ctx-int4-ax650/qwen2_p128_l%d_together.axmodel",
-  "axmodel_num": 28,
-  "filename_post_axmodel": "qwen2.5-1.5b-ctx-int4-ax650/qwen2_post.axmodel",
-  "filename_tokens_embed": "qwen2.5-1.5b-ctx-int4-ax650/model.embed_tokens.weight.bfloat16.bin",
-  "tokens_embed_num": 151936,
-  "tokens_embed_size": 1536
-}
-EOF
-  echo "[deploy] 已生成 axllm config.json (w4a16)"
-fi
+[ -s "${QWEN_DIR}/config.json" ] || { echo "[deploy] Qwen3-0.6B config.json 缺失"; exit 1; }
 
 echo "==> 8/8 启动全部服务"
 bash "${REPO_ROOT}/axera/deploy/start_all.sh"
 sleep 8
 echo
 echo "======== 部署完成 ========"
-echo "LLM  : http://<BOARD_IP>:8000/v1/models （axllm，Qwen2.5-1.5B）"
+echo "LLM  : http://<BOARD_IP>:8000/v1/models （axllm，Qwen3-0.6B）"
 echo "ASR  : http://<BOARD_IP>:1000/v1/upload_audio + ws://<BOARD_IP>:1000/v1/ws/vad"
 echo "TTS  : http://<BOARD_IP>:5000/ (POST {text,text_language})"
 echo "RAG  : http://<BOARD_IP>:8002/ask"

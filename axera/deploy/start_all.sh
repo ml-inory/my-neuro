@@ -40,7 +40,7 @@ start_one bert python3 "$REPO_ROOT/axera/bert_server.py"
 AXLLM="${AXERA_DIR}/bin/axllm"
 if [ -x "$AXLLM" ]; then
   export LD_LIBRARY_PATH="${AXERA_DIR}/bsp/msp_3.6.2/out/lib:/soc/lib:${LD_LIBRARY_PATH:-}"
-  start_one axllm "$AXLLM" serve "${AXERA_DIR}/models/Qwen2.5-1.5B-Instruct" --port 8000
+  start_one axllm "$AXLLM" serve "${AXERA_DIR}/models/Qwen3-0.6B" --port 8000
 else
   echo "[warn] axllm 未安装，跳过 LLM 服务"
 fi

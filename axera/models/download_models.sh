@@ -5,7 +5,7 @@
 #   VAD        morelle/my-neuro-vad      silero_vad.onnx             (~2MB,   ModelScope)
 #   BERT       morelle/Omni_fn_bert      Ernie-3.0-base 分类器        (~450MB, ModelScope)
 #   RAG        AXERA-TECH/bge-m3         bge-m3_u16_npu3.axmodel     (~850MB, HuggingFace)
-#   LLM        AXERA-TECH/Qwen2.5-1.5B-Instruct  axllm 模型目录      (~2GB,   ModelScope 优先)
+#   LLM        AXERA-TECH/Qwen3-0.6B  axllm 模型目录                (~1GB,   ModelScope 优先)
 #   ASR        AXERA-TECH/SenseVoice     sensevoice_ax650            (由 sensevoice.axera 脚本下载)
 #   TTS        ml-inory/melotts.axera    encoder-onnx + decoder-axmodel (由 melotts.axera 脚本下载)
 set -euo pipefail
@@ -15,7 +15,7 @@ ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MODELS_DIR="${AXERA_MODELS_DIR:-$SCRIPT_DIR}"
 HFD="${ROOT}/axera/scripts/download_hf.sh"
 cd "$MODELS_DIR"
-mkdir -p vad bert bge-m3 Qwen2.5-1.5B-Instruct
+mkdir -p vad bert bge-m3 Qwen3-0.6B
 
 # 1) Silero VAD（ModelScope 单文件）
 if [ ! -f vad/silero_vad.onnx ]; then
@@ -49,32 +49,33 @@ if [ ! -f bge-m3/model/bge-m3_u16_npu3.axmodel ]; then
   bash "$HFD" AXERA-TECH/bge-m3 --local-dir bge-m3 -x 8
 fi
 
-# 4) Qwen2.5-1.5B-Instruct ax-llm 模型目录（默认 int4/w4a16，板端 RAM 占用小）
-QWEN_DIR="Qwen2.5-1.5B-Instruct"
-QWEN_INT4="${QWEN_DIR}/qwen2.5-1.5b-ctx-int4-ax650/qwen2_p128_l0_together.axmodel"
-if [ ! -f "$QWEN_INT4" ]; then
-  echo "[models] 下载 Qwen2.5-1.5B-Instruct (AX650, w4a16)..."
+# 4) Qwen3-0.6B ax-llm 模型目录（AX650 官方转换，28 层 w8a16，~1GB）
+QWEN_DIR="Qwen3-0.6B"
+QWEN_KEY="${QWEN_DIR}/qwen3_p128_l0_together.axmodel"
+if [ ! -f "$QWEN_KEY" ]; then
+  echo "[models] 下载 Qwen3-0.6B (AX650, axllm)..."
   python3 - <<'PY'
 import os
 try:
     from modelscope.hub.snapshot_download import snapshot_download
     snapshot_download(
-        'AXERA-TECH/Qwen2.5-1.5B-Instruct',
-        local_dir='Qwen2.5-1.5B-Instruct',
+        'AXERA-TECH/Qwen3-0.6B',
+        local_dir='Qwen3-0.6B',
         allow_patterns=[
-            'qwen2.5-1.5b-ctx-int4-ax650/**',
-            'qwen2.5_tokenizer/**',
+            'qwen3_p128_l*_together.axmodel',
+            'qwen3_post.axmodel',
+            'model.embed_tokens.weight.bfloat16.bin',
+            'qwen3_tokenizer.txt',
             'config.json', 'post_config.json', 'configuration.json',
         ],
     )
-    print('Qwen (ModelScope) -> Qwen2.5-1.5B-Instruct/')
+    print('Qwen3 (ModelScope) -> Qwen3-0.6B/')
 except Exception as e:
     print(f'ModelScope 下载失败，回退 HuggingFace: {e}')
     import subprocess, sys
     subprocess.check_call([sys.executable, '-m', 'huggingface_hub.commands.huggingface_cli',
-        'download', 'AXERA-TECH/Qwen2.5-1.5B-Instruct',
-        '--include', 'qwen2.5-1.5b-ctx-int4-ax650/*', 'qwen2.5_tokenizer/*',
-        '--local-dir', 'Qwen2.5-1.5B-Instruct'])
+        'download', 'AXERA-TECH/Qwen3-0.6B',
+        '--local-dir', 'Qwen3-0.6B'])
 PY
 fi
 

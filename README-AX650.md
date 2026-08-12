@@ -8,7 +8,7 @@ RAG / BERT）都在 AX650 的 NPU 上执行，前端 Live2D 通过原有 HTTP/WS
 
 | 服务 | 端口 | 原接口（保持不变） | AX650 推理后端 | 模型来源 |
 |------|------|--------------------|----------------|----------|
-| LLM | 8000 | OpenAI `/chat/completions` | axllm + Qwen2.5-1.5B（NPU，w4a16） | `AXERA-TECH/Qwen2.5-1.5B-Instruct` |
+| LLM | 8000 | OpenAI `/chat/completions` | axllm + Qwen3-0.6B（NPU，w8a16） | `AXERA-TECH/Qwen3-0.6B` |
 | ASR | 1000 | `/v1/upload_audio`、WS `/v1/ws/vad` | SenseVoice-Small AXMODEL（NPU）+ Silero-VAD（CPU） | `ml-inory/sensevoice.axera` |
 | TTS | 5000 | POST `/`、`/tts`（`{text, text_language}`→wav） | MeloTTS：encoder ONNX（CPU）+ decoder AXMODEL（NPU） | `ml-inory/melotts.axera` |
 | RAG | 8002 | `/encode`、`/similarity`、`/ask` | bge-m3 AXMODEL（NPU，w8a16） | `AXERA-TECH/bge-m3` |
@@ -77,7 +77,7 @@ ssh root@<BOARD_IP> "cd /mnt/axera/my-neuro && bash axera/deploy/install_board.s
 4. `pip --target` 安装 Python 依赖到 `/mnt/axera/pylib`（不占板端根分区，无需 apt/venv）
 5. 下载/链接模型到 `/mnt/axera/models`（vad / bert / bge-m3 / Qwen2.5-1.5B）
 6. 安装 axllm 预编译二进制（`axllm-ax650-linux-arm64`）与 BSP 运行库
-7. 生成 Qwen2.5-1.5B 的 axllm `config.json`（w4a16）
+7. 校验 Qwen3-0.6B 的 axllm `config.json`（官方已提供）
 8. `start_all.sh` 启动全部服务并输出访问地址
 
 ## 前端切换
@@ -104,8 +104,8 @@ bash axera/models/compile_axmodel.sh <导出目录> <编译输出目录>
 
 ## 已知限制
 
-- LLM 默认使用 w4a16（int4）以适配 4GB 内存板；如需更高精度可切 `qwen2.5-1.5b-ctx-ax650`
-  （w8a16，约多占 0.7GB），改 `axera/deploy/install_board.sh` 里的模板路径并重新生成 config.json
+- LLM 默认 Qwen3-0.6B（28 层 w8a16，约 1GB，4GB 内存板流畅）；
+  如需更强模型可换 `AXERA-TECH/Qwen2.5-1.5B-Instruct`（w4a16，约 1.8GB）
 - TTS 为 MeloTTS 音色（与原 GPT-SoVITS 肥牛音色不同）；如需原音色，TTS 仍需在 PC 端跑 GPT-SoVITS
 - ASR 热词通过 `hotwords.txt` 透传给 SenseVoice（原 funasr 的权重热词语法不适用）
 - MemOS（`plugins-dlc/memos`）为纯 Python 记忆系统，未随本分支上板；其 embedding 可复用 RAG 服务
